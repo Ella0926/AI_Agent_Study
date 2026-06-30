@@ -4,9 +4,6 @@ import requests
 from openai import OpenAI
 from tavily import TavilyClient
 
-# ==========================================
-# 1. 配置最高宪法：指令模板（System Prompt）
-# ==========================================
 AGENT_SYSTEM_PROMPT = """
 你是一个智能旅行助手。你的任务是分析用户的请求，并使用可用工具一步步地解决问题。
 
@@ -32,12 +29,7 @@ Action的格式必须是以下之一：
 请开始吧！
 """
 
-# ==========================================
-# 2. 编写实体工具函数（Tools）
-# ==========================================
-
 def get_weather(city: str) -> str:
-    """通过调用 wttr.in API 查询真实的天气信息。"""
     url = f"https://wttr.in/{city}?format=j1"
     try:
         response = requests.get(url)
@@ -50,10 +42,7 @@ def get_weather(city: str) -> str:
     except Exception as e:
         return f"错误:查询天气时遇到问题 - {e}"
 
-
 def get_attraction(city: str, weather: str) -> str:
-    """根据城市和天气，使用Tavily Search API搜索并返回优化后的景点推荐。"""
-    # 老师的代码里是从环境变量读取 KEY
     api_key = os.environ.get("TAVILY_API_KEY")
     if not api_key:
         return "错误:未配置TAVILY_API_KEY环境变量。"
@@ -73,18 +62,11 @@ def get_attraction(city: str, weather: str) -> str:
     except Exception as e:
         return f"错误:执行Tavily搜索时出现问题 - {e}"
 
-# 老师在 1.3.1 末尾提到的：将工具放入字典映射，供后续主循环自动化反射调用
 available_tools = {
     "get_weather": get_weather,
     "get_attraction": get_attraction,
 }
-
-
-# ==========================================
-# 3. 接入大语言模型：老师的接口兼容类实现 (1.3.2)
-# ==========================================
 class OpenAICompatibleClient:
-    """一个用于调用任何兼容OpenAI接口的LLM服务的客户端。"""
     def __init__(self, model: str, api_key: str, base_url: str):
         self.model = model
         self.client = OpenAI(api_key=api_key, base_url=base_url)
@@ -105,41 +87,26 @@ class OpenAICompatibleClient:
         except Exception as e:
             return f"错误:调用语言模型服务时出错。{e}"
 
-
-# ==========================================
-# 4. 执行行动循环：核心主循环控制流 (1.3.3)
-# ==========================================
 if __name__ == "__main__":
-    # 🛠️ 核心配置区：请在这里填入你的真实凭证 🛠️
-    # 如果你使用 DeepSeek，可以把 BASE_URL 换成 https://api.deepseek.com
-    # 🛠️ 核心配置区：请在这里填入你的真实凭证 🛠️
-    # 如果你使用 DeepSeek，可以把 BASE_URL 换成 https://api.deepseek.com
-    # 🛠️ 核心配置区：换成智谱 AI 的免费全套参数 🛠️
     API_KEY = "164eb5efac704ee59f48c31154431ffc.IX6TOgKcxsgdaoTg"
-    BASE_URL = "https://open.bigmodel.cn/api/paas/v4"  # 👈 必须换成智谱大楼的官方正门地址
-    MODEL_ID = "glm-4-flash"                          # 👈 换成老师推荐的、又快又聪明的轻量大脑型号              # 👈 将模型 ID 换成 deepseek-chat
+    BASE_URL = "https://open.bigmodel.cn/api/paas/v4"
+    MODEL_ID = "glm-4-flash"
 
-    # 将 Tavily 的 KEY 直接注入环境变量
-    os.environ['TAVILY_API_KEY'] = "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" # 👈 填入你从 Tavily 官网后台复制出来的 tvly- 开头的完整密钥
+    os.environ['TAVILY_API_KEY'] = "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"
 
-    # 实例化大模型大脑
     llm = OpenAICompatibleClient(model=MODEL_ID, api_key=API_KEY, base_url=BASE_URL)
 
-    # 初始用户输入
     user_prompt = "你好，请帮我查询一下今天北京的天气，然后根据天气推荐一个合适的旅游景点。"
     prompt_history = [f"用户请求: {user_prompt}"]
 
     print(f"用户输入: {user_prompt}\n" + "="*40)
 
-    # 运行主循环流程（限制最大步数防止无限套娃死循环）
     for i in range(5):
         print(f"--- 循环 {i+1} ---\n")
         full_prompt = "\n".join(prompt_history)
         
-        # 1. 思考 (Thought)
         llm_output = llm.generate(full_prompt, system_prompt=AGENT_SYSTEM_PROMPT)
         
-        # 截断可能多出的冗余文本，强行规范
         match = re.search(r'(Thought:.*?Action:.*?)(?=\n\s*(?:Thought:|Action:|Observation:)|\Z)', llm_output, re.DOTALL)
         if match:
             llm_output = match.group(1).strip()
@@ -147,7 +114,6 @@ if __name__ == "__main__":
         print(f"模型输出:\n{llm_output}\n")
         prompt_history.append(llm_output)
         
-        # 2. 解析并执行行动 (Action)
         action_match = re.search(r"Action: (.*)", llm_output, re.DOTALL)
         if not action_match:
             observation_str = "Observation: 错误: 未能解析到 Action 字段。请严格遵循规定格式。"
@@ -156,21 +122,17 @@ if __name__ == "__main__":
             
         action_str = action_match.group(1).strip()
 
-        # 如果大模型觉得大功告成了，发出 Finish 信号，跳出循环
         if action_str.startswith("Finish"):
             final_answer = re.match(r"Finish\[(.*)\]", action_str).group(1)
             print(f"任务完成！\n最终答案: {final_answer}")
             break
         
-        # 利用正则表达式，把 Action: get_weather(city="北京") 拆解成函数名和参数
         try:
             tool_name = re.search(r"(\w+)\(", action_str).group(1)
             args_str = re.search(r"\((.*)\)", action_str).group(1)
             kwargs = dict(re.findall(r'(\w+)="([^"]*)"', args_str))
 
-            # 3. 感知反馈 (Observation)
             if tool_name in available_tools:
-                # 动态反射执行对应的 Python 函数
                 observation = available_tools[tool_name](**kwargs)
             else:
                 observation = f"错误:未定义的工具 '{tool_name}'"
@@ -179,5 +141,4 @@ if __name__ == "__main__":
 
         observation_str = f"Observation: {observation}"
         print(f"{observation_str}\n" + "="*40)
-        # 把这次从物理世界拿到的“新鲜食材”，喂进历史记录，供下一轮循环 LLM 来看
         prompt_history.append(observation_str)
